@@ -1,3 +1,6 @@
+import csv
+from pathlib import Path
+
 from scripts.cflip import csv_header, parse_candidates
 
 
@@ -16,15 +19,8 @@ def test_candidate_parser_discards_invalid_entries_and_preserves_first_seen_orde
 
 
 def test_csv_header_matches_cfopt_contract():
-    assert csv_header() == [
-        "IP地址",
-        "端口",
-        "数据中心",
-        "城市",
-        "TLS",
-        "已发送",
-        "已接收",
-        "丢包率",
-        "平均延迟",
-        "下载速度(MB/s)",
-    ]
+    fixture = Path(__file__).parent / "fixtures" / "cfopt-header.csv"
+    with fixture.open(encoding="utf-8", newline="") as source:
+        expected_header = next(csv.reader(source))
+
+    assert csv_header() == expected_header
