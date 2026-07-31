@@ -17,14 +17,14 @@ def test_candidate_parser_discards_invalid_entries_and_preserves_first_seen_orde
 
 def test_csv_header_matches_cfopt_contract():
     assert csv_header() == [
-        "IP鍦板潃",
-        "绔彛",
-        "鏁版嵁涓績",
-        "鍩庡競",
+        "IP地址",
+        "端口",
+        "数据中心",
+        "城市",
         "TLS",
-        "宸插彂閫?",
-        "宸叉帴鏀?",
-        "涓㈠寘鐜?",
-        "骞冲潎寤惰繜",
-        "涓嬭浇閫熷害(MB/s)",
+        "已发送",
+        "已接收",
+        "丢包率",
+        "平均延迟",
+        "下载速度(MB/s)",
     ]
