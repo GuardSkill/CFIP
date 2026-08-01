@@ -1,7 +1,54 @@
 import csv
+import socket
+import threading
+from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
+from scripts import cflip
 from scripts.cflip import csv_header, parse_candidates
+
+
+@dataclass(frozen=True)
+class LocalTcpListener:
+    """A live loopback listener that accepts every probe connection."""
+
+    host: str
+    port: int
+
+
+@pytest.fixture
+def local_listener():
+    """Provide a loopback TCP endpoint and always close its worker thread."""
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+    server.settimeout(0.05)
+    stopped = threading.Event()
+
+    def accept_connections() -> None:
+        while not stopped.is_set():
+            try:
+                connection, _ = server.accept()
+            except TimeoutError:
+                continue
+            except OSError:
+                return
+            with connection:
+                pass
+
+    worker = threading.Thread(target=accept_connections, daemon=True)
+    worker.start()
+    listener = LocalTcpListener(*server.getsockname())
+
+    try:
+        yield listener
+    finally:
+        stopped.set()
+        server.close()
+        worker.join(timeout=1)
 
 
 def test_candidate_parser_keeps_only_requested_port():
@@ -24,3 +71,35 @@ def test_csv_header_matches_cfopt_contract():
         expected_header = next(csv.reader(source))
 
     assert csv_header() == expected_header
+
+
+def test_precheck_returns_reachable_address_first(local_listener):
+    """Unreachable candidates must not occupy the precheck result limit."""
+    assert cflip.tcp_precheck(
+        [local_listener.host, "198.18.0.1"], local_listener.port, 0.1, 1
+    ) == [local_listener.host]
+
+
+def test_normalize_cfst_rows_uses_cfopt_ten_column_mapping(tmp_path):
+    """CFST measurements must become a complete CFOpt row with a GH marker."""
+    source = tmp_path / "cfst.csv"
+    source.write_text(
+        "IP 地址,已发送,已接收,丢包率,平均延迟,下载速度(MB/s),地区码\n"
+        "1.1.1.1,2,2,0,20,1.5,HKG\n",
+        encoding="utf-8",
+    )
+
+    assert cflip.normalize_cfst_rows(source, "HK", 443) == [
+        {
+            "IP地址": "1.1.1.1",
+            "端口": "443",
+            "数据中心": "HKG",
+            "城市": "🇭🇰 HK [GitHub Actions#01 tcp-precheck]",
+            "TLS": "true",
+            "已发送": "2",
+            "已接收": "2",
+            "丢包率": "0",
+            "平均延迟": "20",
+            "下载速度(MB/s)": "1.5",
+        }
+    ]
