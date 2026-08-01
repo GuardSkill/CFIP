@@ -67,7 +67,7 @@ jobs:
 
       - name: Install CloudflareSpeedTest (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'CFIP-Actions' } -Uri 'https://api.github.com/repos/XIU2/CloudflareSpeedTest/releases/latest'
           $asset = @($release.assets | Where-Object { $_.name -match '^cfst_windows_amd64\.zip$' })
@@ -82,15 +82,16 @@ jobs:
         run: python scripts/cflip.py
 
       - name: Commit changed artifacts
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          $ErrorActionPreference = 'Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f -- CloudflareSpeedTest_GH.csv proxyip-best.txt .cflip/last-success.txt
-          if git diff --cached --quiet; then
-            echo "No generated changes to commit."
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'No generated changes to commit.'
             exit 0
-          fi
-          git commit -m "chore: update CFIP artifacts"
+          }
+          git commit -m 'chore: update CFIP artifacts'
           git push
