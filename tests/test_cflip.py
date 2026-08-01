@@ -41,6 +41,16 @@ def test_runtime_candidates_continue_when_one_cfbestip_country_is_missing(monkey
     assert candidates[("KR", 443)] == ["2.2.2.2"]
 
 
+def test_cfst_command_serializes_integral_latency_without_decimal(tmp_path):
+    """CFST accepts an integer only for its -tl latency limit."""
+    command = cflip._cfst_command(
+        tmp_path / "cfst.exe", tmp_path / "candidates.txt", tmp_path / "result.csv",
+        443, 420.0, 0.03, "https://example.test/download",
+    )
+
+    assert command[command.index("-tl") + 1] == "420"
+
+
 @dataclass(frozen=True)
 class LocalTcpListener:
     """A live loopback listener that accepts every probe connection."""

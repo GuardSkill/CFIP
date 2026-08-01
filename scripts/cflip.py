@@ -173,7 +173,7 @@ def normalize_cfst_rows(path: Path, country: str, port: int) -> list[dict[str, s
 
 def filter_rows(
     rows: list[dict[str, str]],
-    max_latency: float,
+    max_latency: int,
     min_speed: float,
     per_country: int,
 ) -> list[dict[str, str]]:
@@ -580,7 +580,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--candidate-limit", type=int, default=200)
     parser.add_argument("--tcp-timeout", type=float, default=0.8)
     parser.add_argument("--tcp-limit", type=int, default=80)
-    parser.add_argument("--max-latency", type=float, default=420.0)
+    parser.add_argument("--max-latency", type=int, default=420)
     parser.add_argument("--min-speed", type=float, default=0.03)
     parser.add_argument("--per-country", type=int, default=20)
     parser.add_argument("--download-url", default="https://cf.xiu2.xyz/url")
