@@ -1,0 +1,83 @@
+name: Update CFIP artifacts
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: Runner label (the self-hosted option requires a trusted Linux x64 runner)
+        required: true
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - self-hosted
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cfip-publisher
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_label || 'ubuntu-latest' }}
+    timeout-minutes: 140
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CloudflareSpeedTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_url="$(python - <<'PY'
+          import json
+          import urllib.request
+
+          request = urllib.request.Request(
+              "https://api.github.com/repos/XIU2/CloudflareSpeedTest/releases/latest",
+              headers={"Accept": "application/vnd.github+json", "User-Agent": "CFIP-Actions"},
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              release = json.load(response)
+          matches = [
+              asset["browser_download_url"]
+              for asset in release["assets"]
+              if asset["name"].endswith("linux_amd64.tar.gz")
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one linux_amd64 CFST asset, found {len(matches)}")
+          print(matches[0])
+          PY
+          )"
+          curl --fail --location --retry 3 --output cfst.tar.gz "$asset_url"
+          mkdir -p .cflip/bin
+          tar -xzf cfst.tar.gz -C .cflip/bin
+          chmod +x .cflip/bin/cfst
+
+      - name: Run CFIP publisher
+        env:
+          CFST_PATH: .cflip/bin/cfst
+        run: python scripts/cflip.py
+
+      - name: Commit changed artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- CloudflareSpeedTest_GH.csv proxyip-best.txt .cflip/last-success.txt
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: update CFIP artifacts"
+          git push

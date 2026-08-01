@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -299,3 +300,132 @@ def test_proxy_writer_emits_only_address_country_lines(tmp_path, local_listener)
     )
 
     assert output.read_text(encoding="utf-8") == f"{local_listener.host}:{local_listener.port}#HK\n"
+
+
+def test_interval_gate_skips_before_150_minutes_and_runs_at_boundary(tmp_path):
+    """A successful publish must suppress every run younger than 150 minutes."""
+    state = tmp_path / "last-success.txt"
+    state.write_text("2026-08-01T00:00:00+00:00\n", encoding="utf-8")
+
+    assert cflip.should_run(
+        state, datetime.fromisoformat("2026-08-01T02:29:00+00:00")
+    ) is False
+    assert cflip.should_run(
+        state, datetime.fromisoformat("2026-08-01T02:30:00+00:00")
+    ) is True
+
+
+def test_cli_gate_returns_before_pipeline_work(tmp_path, monkeypatch, capsys):
+    """A gated invocation must not reach candidate, TCP, CFST, or proxy work."""
+    state = tmp_path / "last-success.txt"
+    state.write_text("2026-08-01T00:00:00+00:00\n", encoding="utf-8")
+
+    def unexpected_pipeline(_args, _now):
+        raise AssertionError("the gated invocation entered the network pipeline")
+
+    monkeypatch.setattr(cflip, "run_pipeline", unexpected_pipeline)
+
+    result = cflip.main(
+        [
+            "--state-file", str(state),
+            "--now", "2026-08-01T02:29:00+00:00",
+        ]
+    )
+
+    assert result == 0
+    assert "150-minute gate" in capsys.readouterr().out
+
+
+def test_dry_run_uses_fixtures_and_writes_complete_artifacts(tmp_path):
+    """Dry-run must create reviewable outputs without public network or CFST."""
+    output = tmp_path / "CloudflareSpeedTest_GH.csv"
+    proxy_output = tmp_path / "proxyip-best.txt"
+    state = tmp_path / ".cflip" / "last-success.txt"
+    fixture_dir = Path(__file__).parent / "fixtures" / "pipeline"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path("scripts/cflip.py").resolve()),
+            "--dry-run",
+            "--fixture-dir", str(fixture_dir),
+            "--countries", "HK,JP",
+            "--ports", "443",
+            "--output", str(output),
+            "--proxy-output", str(proxy_output),
+            "--state-file", str(state),
+            "--now", "2026-08-01T02:30:00+00:00",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Would run CFST:" in completed.stdout
+    with output.open(encoding="utf-8", newline="") as source:
+        assert list(csv.reader(source)) == [
+            csv_header(),
+            [
+                "1.1.1.1", "443", "HKG", "🇭🇰 HK [GitHub Actions#01 tcp-precheck]",
+                "true", "2", "2", "0", "20", "1.5",
+            ],
+            [
+                "2.2.2.2", "443", "NRT", "🇯🇵 JP [GitHub Actions#01 tcp-precheck]",
+                "true", "2", "2", "0", "30", "1.0",
+            ],
+        ]
+    assert proxy_output.read_text(encoding="utf-8") == (
+        "1.1.1.1:443#HK\n2.2.2.2:443#JP\n"
+    )
+    assert state.read_text(encoding="utf-8") == "2026-08-01T02:30:00+00:00\n"
+
+
+def test_fixture_runtime_prefilters_before_stubbed_cfst_and_proxy(
+    tmp_path, monkeypatch
+):
+    """Runtime orchestration must prefilter before invoking external tools."""
+    fixture_dir = Path(__file__).parent / "fixtures" / "pipeline"
+    output = tmp_path / "CloudflareSpeedTest_GH.csv"
+    proxy_output = tmp_path / "proxyip-best.txt"
+    state = tmp_path / "last-success.txt"
+    events = []
+
+    def fixture_precheck(addresses, port, timeout, limit):
+        events.append(("tcp", tuple(addresses), port))
+        return addresses[:limit]
+
+    def stubbed_run(command, check):
+        assert check is True
+        if command[0] == "stub-cfst":
+            events.append(("cfst",))
+            result = Path(command[command.index("-o") + 1])
+            result.write_bytes((fixture_dir / "cfst" / "443.csv").read_bytes())
+        else:
+            events.append(("proxy",))
+            result = Path(command[command.index("--output") + 1])
+            result.write_bytes((fixture_dir / "proxyip-best.txt").read_bytes())
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(cflip, "tcp_precheck", fixture_precheck)
+    monkeypatch.setattr(cflip.subprocess, "run", stubbed_run)
+
+    result = cflip.main(
+        [
+            "--fixture-dir", str(fixture_dir),
+            "--countries", "HK,JP",
+            "--ports", "443",
+            "--cfst-path", "stub-cfst",
+            "--output", str(output),
+            "--proxy-output", str(proxy_output),
+            "--state-file", str(state),
+            "--now", "2026-08-01T02:30:00+00:00",
+        ]
+    )
+
+    assert result == 0
+    assert [event[0] for event in events] == ["tcp", "tcp", "cfst", "proxy"]
+    assert output.is_file()
+    assert proxy_output.read_bytes() == (
+        fixture_dir / "proxyip-best.txt"
+    ).read_bytes()
