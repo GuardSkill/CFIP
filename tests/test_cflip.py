@@ -80,6 +80,61 @@ def test_precheck_returns_reachable_address_first(local_listener):
     ) == [local_listener.host]
 
 
+def test_precheck_limits_in_flight_submissions_for_large_input(monkeypatch):
+    """Large inputs must not queue more probes than the worker capacity."""
+    addresses = [f"192.0.2.{index}" for index in range(1, 41)]
+    original_executor = cflip.ThreadPoolExecutor
+    release_probes = threading.Event()
+    all_workers_started = threading.Event()
+    started_lock = threading.Lock()
+    started = 0
+
+    class BoundedExecutor(original_executor):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.outstanding = set()
+
+        def submit(self, *args, **kwargs):
+            if len(self.outstanding) >= 32:
+                raise AssertionError("more than 32 probes were submitted in flight")
+            future = super().submit(*args, **kwargs)
+            self.outstanding.add(future)
+            future.add_done_callback(self.outstanding.discard)
+            return future
+
+    def blocked_probe(address, port, timeout):
+        nonlocal started
+        with started_lock:
+            started += 1
+            if started == 32:
+                all_workers_started.set()
+        release_probes.wait()
+        return 0.1
+
+    monkeypatch.setattr(cflip, "ThreadPoolExecutor", BoundedExecutor)
+    monkeypatch.setattr(cflip, "_tcp_connect_time", blocked_probe)
+    outcome = []
+    errors = []
+
+    def run_precheck():
+        try:
+            outcome.append(cflip.tcp_precheck(addresses, 443, 0.1, 4))
+        except BaseException as error:  # Keep worker assertion failures observable.
+            errors.append(error)
+
+    worker = threading.Thread(target=run_precheck)
+    worker.start()
+    try:
+        assert all_workers_started.wait(timeout=1)
+    finally:
+        release_probes.set()
+        worker.join(timeout=1)
+
+    assert not worker.is_alive()
+    assert not errors
+    assert outcome == [addresses[:4]]
+
+
 def test_normalize_cfst_rows_uses_cfopt_ten_column_mapping(tmp_path):
     """CFST measurements must become a complete CFOpt row with a GH marker."""
     source = tmp_path / "cfst.csv"

@@ -6,7 +6,7 @@ import csv
 import ipaddress
 import socket
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 
 
@@ -64,16 +64,31 @@ def tcp_precheck(
 
     ranked: list[tuple[float, int, str]] = []
     workers = min(32, len(addresses))
+    pending = iter(enumerate(addresses))
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(_tcp_connect_time, address, port, timeout): (index, address)
-            for index, address in enumerate(addresses)
-        }
-        for future in as_completed(futures):
-            index, address = futures[future]
-            elapsed = future.result()
-            if elapsed is not None:
-                ranked.append((elapsed, index, address))
+        futures = {}
+        for _ in range(workers):
+            index, address = next(pending)
+            futures[executor.submit(_tcp_connect_time, address, port, timeout)] = (
+                index,
+                address,
+            )
+
+        while futures:
+            completed, _ = wait(futures, return_when=FIRST_COMPLETED)
+            for future in completed:
+                index, address = futures.pop(future)
+                elapsed = future.result()
+                if elapsed is not None:
+                    ranked.append((elapsed, index, address))
+
+                try:
+                    next_index, next_address = next(pending)
+                except StopIteration:
+                    continue
+                futures[
+                    executor.submit(_tcp_connect_time, next_address, port, timeout)
+                ] = (next_index, next_address)
 
     ranked.sort()
     return [address for _, _, address in ranked[:limit]]
