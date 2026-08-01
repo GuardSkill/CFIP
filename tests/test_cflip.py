@@ -215,6 +215,53 @@ def test_filter_rows_rejects_bad_measurements_and_caps_each_country():
     ]
 
 
+def test_filter_rows_rounds_speed_to_two_decimals_before_the_threshold():
+    """CFOpt accepts a 0.0296 Mb/s measurement because it rounds to 0.03 Mb/s."""
+    rows = [{
+        "IP地址": "1.1.1.1", "端口": "443", "数据中心": "HKG",
+        "城市": "🇭🇰 HK [GitHub Actions#01 tcp-precheck]", "TLS": "true",
+        "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "20",
+        "下载速度(MB/s)": "0.0037",
+    }]
+
+    assert cflip.filter_rows(rows, 420, 0.03, 1) == rows
+
+
+def test_filter_rows_keeps_the_best_duplicate_endpoint_key():
+    """An IP/port/country duplicate keeps the lower-latency, then faster row."""
+    rows = [
+        {
+            "IP地址": "1.1.1.1", "端口": "443", "数据中心": "SLOW",
+            "城市": "🇭🇰 HK [GitHub Actions#01 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "30",
+            "下载速度(MB/s)": "0.08",
+        },
+        {
+            "IP地址": "1.1.1.1", "端口": "443", "数据中心": "FAST",
+            "城市": "🇭🇰 HK [GitHub Actions#02 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "20",
+            "下载速度(MB/s)": "0.04",
+        },
+        {
+            "IP地址": "2.2.2.2", "端口": "443", "数据中心": "LOW-SPEED",
+            "城市": "🇭🇰 HK [GitHub Actions#03 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "20",
+            "下载速度(MB/s)": "0.04",
+        },
+        {
+            "IP地址": "2.2.2.2", "端口": "443", "数据中心": "HIGH-SPEED",
+            "城市": "🇭🇰 HK [GitHub Actions#04 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "20",
+            "下载速度(MB/s)": "0.08",
+        },
+    ]
+
+    assert [row["数据中心"] for row in cflip.filter_rows(rows, 420, 0.03, 2)] == [
+        "HIGH-SPEED",
+        "FAST",
+    ]
+
+
 def test_write_csv_emits_the_exact_cfopt_header_and_ten_columns(tmp_path):
     """A CSV writer regression must not alter CFOpt's byte-level contract."""
     output = tmp_path / "CloudflareSpeedTest_GH.csv"

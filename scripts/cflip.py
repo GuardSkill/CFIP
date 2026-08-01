@@ -158,7 +158,8 @@ def filter_rows(
 
         if not all(math.isfinite(value) for value in (received, loss, latency, speed)):
             continue
-        if received < 1 or loss >= 1 or latency > max_latency or speed * 8 < min_speed:
+        speed_mbps = round(speed * 8, 2)
+        if received < 1 or loss >= 1 or latency > max_latency or speed_mbps < min_speed:
             continue
 
         eligible.append((_row_country(row), latency, speed, index, row))
