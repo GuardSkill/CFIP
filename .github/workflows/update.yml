@@ -32,6 +32,7 @@ jobs:
           fetch-depth: 0
 
       - uses: actions/setup-python@v6
+        if: runner.os != 'Windows'
         with:
           python-version: "3.12"
 
@@ -76,10 +77,21 @@ jobs:
           Invoke-WebRequest -Uri $asset[0].browser_download_url -OutFile 'cfst.zip'
           Expand-Archive -Path 'cfst.zip' -DestinationPath '.cflip/bin' -Force
 
-      - name: Run CFIP publisher
+      - name: Run CFIP publisher (Linux)
+        if: runner.os != 'Windows'
         env:
-          CFST_PATH: ${{ runner.os == 'Windows' && '.cflip/bin/cfst.exe' || '.cflip/bin/cfst' }}
+          CFST_PATH: .cflip/bin/cfst
         run: python scripts/cflip.py
+
+      - name: Run CFIP publisher (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          CFST_PATH: .cflip/bin/cfst.exe
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'H:\CodeApp\Anaconda\python.exe' --version
+          & 'H:\CodeApp\Anaconda\python.exe' scripts/cflip.py
 
       - name: Commit changed artifacts
         shell: powershell
