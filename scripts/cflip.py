@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import ipaddress
+import math
 import socket
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -27,6 +28,19 @@ CSV_HEADER = [
 def csv_header() -> list[str]:
     """Return a fresh copy of the CFOpt-compatible CSV header."""
     return CSV_HEADER.copy()
+
+
+def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
+    """Write filtered CFST rows using CFOpt's exact header and field order."""
+    with path.open("w", encoding="utf-8", newline="") as output:
+        writer = csv.DictWriter(
+            output,
+            fieldnames=CSV_HEADER,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def parse_candidates(text: str, country: str, port: int) -> list[str]:
@@ -122,6 +136,56 @@ def normalize_cfst_rows(path: Path, country: str, port: int) -> list[dict[str, s
     return rows
 
 
+def filter_rows(
+    rows: list[dict[str, str]],
+    max_latency: float,
+    min_speed: float,
+    per_country: int,
+) -> list[dict[str, str]]:
+    """Keep valid CFST rows, deduplicated and capped by country."""
+    if per_country <= 0:
+        return []
+
+    eligible: list[tuple[str, float, float, int, dict[str, str]]] = []
+    for index, row in enumerate(rows):
+        try:
+            received = float(row["已接收"])
+            loss = float(row["丢包率"])
+            latency = float(row["平均延迟"])
+            speed = float(row["下载速度(MB/s)"])
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        if not all(math.isfinite(value) for value in (received, loss, latency, speed)):
+            continue
+        if received < 1 or loss >= 1 or latency > max_latency or speed * 8 < min_speed:
+            continue
+
+        eligible.append((_row_country(row), latency, speed, index, row))
+
+    best_by_endpoint: dict[tuple[str, str, str], tuple[str, float, float, int, dict[str, str]]] = {}
+    for candidate in eligible:
+        country, latency, speed, index, row = candidate
+        key = (row.get("IP地址", ""), row.get("端口", ""), country)
+        existing = best_by_endpoint.get(key)
+        if existing is None or (latency, -speed, index) < (
+            existing[1],
+            -existing[2],
+            existing[3],
+        ):
+            best_by_endpoint[key] = candidate
+
+    grouped: dict[str, list[tuple[str, float, float, int, dict[str, str]]]] = {}
+    for candidate in best_by_endpoint.values():
+        grouped.setdefault(candidate[0], []).append(candidate)
+
+    kept: list[dict[str, str]] = []
+    for country in sorted(grouped):
+        country_rows = sorted(grouped[country], key=lambda item: (item[1], -item[2], item[3]))
+        kept.extend(row for _, _, _, _, row in country_rows[:per_country])
+    return kept
+
+
 def _is_ipv4_address(value: str) -> bool:
     try:
         return isinstance(ipaddress.ip_address(value), ipaddress.IPv4Address)
@@ -142,3 +206,10 @@ def _country_flag(country: str) -> str:
     if len(country) == 2 and country.isascii() and country.isalpha():
         return "".join(chr(0x1F1E6 + ord(letter) - ord("A")) for letter in country)
     return country
+
+
+def _row_country(row: dict[str, str]) -> str:
+    for token in row.get("城市", "").split():
+        if len(token) == 2 and token.isascii() and token.isalpha():
+            return token.upper()
+    return "UNK"

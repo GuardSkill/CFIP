@@ -1,5 +1,7 @@
 import csv
 import socket
+import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,3 +160,95 @@ def test_normalize_cfst_rows_uses_cfopt_ten_column_mapping(tmp_path):
             "下载速度(MB/s)": "1.5",
         }
     ]
+
+
+def test_filter_rows_rejects_bad_measurements_and_caps_each_country():
+    """A bad CFST measurement or slower country peer must not be published."""
+    rows = [
+        {
+            "IP地址": "1.1.1.1", "端口": "443", "数据中心": "HKG",
+            "城市": "🇭🇰 HK [GitHub Actions#01 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "20",
+            "下载速度(MB/s)": "0.04",
+        },
+        {
+            "IP地址": "2.2.2.2", "端口": "443", "数据中心": "HKG",
+            "城市": "🇭🇰 HK [GitHub Actions#02 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "30",
+            "下载速度(MB/s)": "0.08",
+        },
+        {
+            "IP地址": "3.3.3.3", "端口": "443", "数据中心": "NRT",
+            "城市": "🇯🇵 JP [GitHub Actions#01 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "40",
+            "下载速度(MB/s)": "0.04",
+        },
+        {
+            "IP地址": "4.4.4.4", "端口": "443", "数据中心": "HKG",
+            "城市": "🇭🇰 HK [GitHub Actions#03 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "0", "丢包率": "0", "平均延迟": "20",
+            "下载速度(MB/s)": "0.04",
+        },
+        {
+            "IP地址": "5.5.5.5", "端口": "443", "数据中心": "HKG",
+            "城市": "🇭🇰 HK [GitHub Actions#04 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "1", "平均延迟": "20",
+            "下载速度(MB/s)": "0.04",
+        },
+        {
+            "IP地址": "6.6.6.6", "端口": "443", "数据中心": "HKG",
+            "城市": "🇭🇰 HK [GitHub Actions#05 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "421",
+            "下载速度(MB/s)": "0.04",
+        },
+        {
+            "IP地址": "7.7.7.7", "端口": "443", "数据中心": "HKG",
+            "城市": "🇭🇰 HK [GitHub Actions#06 tcp-precheck]", "TLS": "true",
+            "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "20",
+            "下载速度(MB/s)": "0.003",
+        },
+    ]
+
+    assert [row["IP地址"] for row in cflip.filter_rows(rows, 420, 0.03, 1)] == [
+        "1.1.1.1",
+        "3.3.3.3",
+    ]
+
+
+def test_write_csv_emits_the_exact_cfopt_header_and_ten_columns(tmp_path):
+    """A CSV writer regression must not alter CFOpt's byte-level contract."""
+    output = tmp_path / "CloudflareSpeedTest_GH.csv"
+    rows = [{
+        "IP地址": "1.1.1.1", "端口": "443", "数据中心": "HKG",
+        "城市": "🇭🇰 HK [GitHub Actions#01 tcp-precheck]", "TLS": "true",
+        "已发送": "2", "已接收": "2", "丢包率": "0", "平均延迟": "20",
+        "下载速度(MB/s)": "1.5",
+    }]
+
+    cflip.write_csv(output, rows)
+
+    assert output.read_bytes() == (
+        "IP地址,端口,数据中心,城市,TLS,已发送,已接收,丢包率,平均延迟,下载速度(MB/s)\n"
+        "1.1.1.1,443,HKG,🇭🇰 HK [GitHub Actions#01 tcp-precheck],true,2,2,0,20,1.5\n"
+    ).encode("utf-8")
+
+
+def test_proxy_writer_emits_only_address_country_lines(tmp_path, local_listener):
+    """The proxy CLI must preserve CFOpt's address#COUNTRY output format."""
+    source = tmp_path / "candidates.txt"
+    output = tmp_path / "proxyip-best.txt"
+    source.write_text(f"{local_listener.host}:{local_listener.port}#hk\n", encoding="utf-8")
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path("scripts/generate_proxyip_best.py").resolve()),
+            "--source", source.as_uri(), "--output", str(output),
+            "--countries", "HK", "--limit", "1", "--timeout", "0.1", "--workers", "1",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert output.read_text(encoding="utf-8") == f"{local_listener.host}:{local_listener.port}#HK\n"
