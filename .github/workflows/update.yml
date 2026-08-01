@@ -6,13 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       runner_label:
-        description: Runner label (the self-hosted option requires a trusted Linux x64 runner)
+        description: Runner target
         required: true
         default: ubuntu-latest
         type: choice
         options:
           - ubuntu-latest
           - self-hosted
+          - self-hosted-windows
 
 permissions:
   contents: write
@@ -23,7 +24,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ${{ inputs.runner_label == 'self-hosted' && fromJSON('["self-hosted","linux","x64"]') || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner_label == 'self-hosted' && fromJSON('["self-hosted","linux","x64"]') || inputs.runner_label == 'self-hosted-windows' && fromJSON('["self-hosted","windows","x64"]') || 'ubuntu-latest' }}
     timeout-minutes: 140
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +35,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install CloudflareSpeedTest
+      - name: Install CloudflareSpeedTest (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -63,9 +65,20 @@ jobs:
           tar -xzf cfst.tar.gz -C .cflip/bin
           chmod +x .cflip/bin/cfst
 
+      - name: Install CloudflareSpeedTest (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'CFIP-Actions' } -Uri 'https://api.github.com/repos/XIU2/CloudflareSpeedTest/releases/latest'
+          $asset = @($release.assets | Where-Object { $_.name -match '^cfst_windows_amd64\.zip$' })
+          if ($asset.Count -ne 1) { throw "Expected one Windows x64 CFST asset, got $($asset.Count)" }
+          New-Item -ItemType Directory -Force -Path '.cflip/bin' | Out-Null
+          Invoke-WebRequest -Uri $asset[0].browser_download_url -OutFile 'cfst.zip'
+          Expand-Archive -Path 'cfst.zip' -DestinationPath '.cflip/bin' -Force
+
       - name: Run CFIP publisher
         env:
-          CFST_PATH: .cflip/bin/cfst
+          CFST_PATH: ${{ runner.os == 'Windows' && '.cflip/bin/cfst.exe' || '.cflip/bin/cfst' }}
         run: python scripts/cflip.py
 
       - name: Commit changed artifacts

@@ -47,10 +47,13 @@ Manual dispatch exposes a constrained `runner_label` choice:
 - `self-hosted` uses a trusted self-hosted runner carrying GitHub's standard
   `self-hosted`, `linux`, and `x64` labels. Every other input value falls back
   to `ubuntu-latest`; no input is interpolated directly into `runs-on`.
+- `self-hosted-windows` uses a trusted self-hosted runner carrying
+  `self-hosted`, `windows`, and `x64` labels and installs Windows x64 CFST.
 
-The self-hosted runner must be Linux x64, have outbound HTTPS/TCP access, and
-provide Bash, `curl`, `tar`, Git, and Python setup support. Register it with the
-repository or an allowed organization runner group, then select `self-hosted`
+The self-hosted runner must be Linux x64 or Windows x64, have outbound
+HTTPS/TCP access, and provide Git plus Python setup support. Register it with
+the repository or an allowed organization runner group, then select the matching
+option
 from **Actions → Update CFIP artifacts → Run workflow**. The choice input is an
 allowlist rather than a free-form expression, so a dispatch cannot route the
 job to an arbitrary label. To use a custom label, add it deliberately to both
