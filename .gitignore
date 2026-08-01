@@ -3,3 +3,6 @@
 .env
 __pycache__/
 .pytest_cache/
+.cflip/
+CloudflareSpeedTest_GH.csv
+proxyip-best.txt

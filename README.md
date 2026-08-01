@@ -45,7 +45,8 @@ Manual dispatch exposes a constrained `runner_label` choice:
 
 - `ubuntu-latest` uses a GitHub-hosted runner.
 - `self-hosted` uses a trusted self-hosted runner carrying GitHub's standard
-  `self-hosted` label.
+  `self-hosted`, `linux`, and `x64` labels. Every other input value falls back
+  to `ubuntu-latest`; no input is interpolated directly into `runs-on`.
 
 The self-hosted runner must be Linux x64, have outbound HTTPS/TCP access, and
 provide Bash, `curl`, `tar`, Git, and Python setup support. Register it with the
@@ -78,6 +79,11 @@ The dry-run prints each intended CFST command and writes fixture-derived output
 files. Use temporary `--output`, `--proxy-output`, and `--state-file` paths if
 you do not want to update files in the working tree. `--now` accepts a
 timezone-aware ISO-8601 value for reproducible gate checks.
+
+Generated outputs and `.cflip/` runtime state are ignored for local work. The
+workflow force-adds only `CloudflareSpeedTest_GH.csv`, `proxyip-best.txt`, and
+`.cflip/last-success.txt` when publishing, so downloaded binaries and temporary
+runtime files cannot be included in its artifact commit.
 
 For a real local run, install a Linux x64 `cfst` binary and either export
 `CFST_PATH` or pass `--cfst-path`. Run `python scripts/cflip.py --help` for
