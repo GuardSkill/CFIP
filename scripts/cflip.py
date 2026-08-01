@@ -396,7 +396,7 @@ def _cfst_command(
     candidates_path: Path,
     result_path: Path,
     port: int,
-    max_latency: float,
+    max_latency: int,
     min_speed: float,
     download_url: str,
 ) -> list[str]:
@@ -408,7 +408,7 @@ def _cfst_command(
         "-t", "6",
         "-dn", "30",
         "-dt", "15",
-        "-tl", str(max_latency),
+        "-tl", str(int(max_latency)),
         "-tlr", "0",
         "-p", "0",
     ]
