@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import urllib.error
 import zipfile
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone
@@ -334,12 +335,16 @@ def load_runtime_candidates(
             for port in ports
         }
 
-    cfbestip_text = {
-        country: _download(
-            f"{cfbestip_base_url.rstrip('/')}/ip_{country}.txt", timeout
-        ).decode("utf-8-sig")
-        for country in countries
-    }
+    cfbestip_text: dict[str, str] = {}
+    for country in countries:
+        url = f"{cfbestip_base_url.rstrip('/')}/ip_{country}.txt"
+        try:
+            cfbestip_text[country] = _download(url, timeout).decode("utf-8-sig")
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            print(f"Optional cf-bestip source missing for {country}: {url}")
+            cfbestip_text[country] = ""
     loaded: dict[tuple[str, int], list[str]] = {}
     for country in countries:
         for port in ports:

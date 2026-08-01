@@ -1,8 +1,11 @@
 import csv
+import io
 import socket
 import subprocess
 import sys
 import threading
+import urllib.error
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +14,31 @@ import pytest
 
 from scripts import cflip
 from scripts.cflip import csv_header, parse_candidates
+
+
+def test_runtime_candidates_continue_when_one_cfbestip_country_is_missing(monkeypatch):
+    """A missing optional cf-bestip country file must not discard ip.zip input."""
+    source = io.BytesIO()
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("443/HK.txt", "1.1.1.1\n")
+        archive.writestr("443/KR.txt", "2.2.2.2\n")
+
+    def download(url, timeout):
+        if url == "https://example.test/ip.zip":
+            return source.getvalue()
+        if url.endswith("ip_HK.txt"):
+            return b"3.3.3.3:443#HK-score\n"
+        raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+
+    monkeypatch.setattr(cflip, "_download", download)
+
+    candidates = cflip.load_runtime_candidates(
+        ["HK", "KR"], [443], "https://example.test/ip.zip",
+        "https://example.test/cf-bestip", 1,
+    )
+
+    assert candidates[("HK", 443)] == ["1.1.1.1", "3.3.3.3"]
+    assert candidates[("KR", 443)] == ["2.2.2.2"]
 
 
 @dataclass(frozen=True)
