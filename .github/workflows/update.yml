@@ -8,7 +8,7 @@ on:
       runner_label:
         description: Runner target
         required: true
-        default: ubuntu-latest
+        default: self-hosted-windows
         type: choice
         options:
           - ubuntu-latest
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ${{ inputs.runner_label == 'self-hosted' && fromJSON('["self-hosted","linux","x64"]') || inputs.runner_label == 'self-hosted-windows' && fromJSON('["self-hosted","windows","x64"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'schedule' && fromJSON('["self-hosted","windows","x64"]') || inputs.runner_label == 'self-hosted' && fromJSON('["self-hosted","linux","x64"]') || inputs.runner_label == 'self-hosted-windows' && fromJSON('["self-hosted","windows","x64"]') || 'ubuntu-latest' }}
     timeout-minutes: 140
     steps:
       - uses: actions/checkout@v4
