@@ -50,6 +50,7 @@ DEFAULT_IP_ZIP_URL = "https://zip.cm.edu.kg/ip.zip"
 DEFAULT_CFBESTIP_BASE_URL = "https://zoroaaa.github.io/cf-bestip"
 DEFAULT_PROXY_SOURCE = "https://zip.cm.edu.kg/all.txt"
 SUCCESS_INTERVAL = timedelta(minutes=150)
+LOCATION_OUTPUTS = {"CD": "CloudflareSpeedTest_CD.csv", "BJ": "CloudflareSpeedTest_BJ.csv"}
 
 
 def csv_header() -> list[str]:
@@ -77,6 +78,22 @@ def parse_country_speed_thresholds(value: str) -> dict[str, float]:
             raise ValueError(f"invalid country speed threshold: {entry!r}")
         thresholds[country.upper()] = speed
     return thresholds
+
+
+def resolve_output_path(args: argparse.Namespace) -> str:
+    """Return an explicit output or the CSV belonging to the runner location."""
+    return args.output or LOCATION_OUTPUTS[args.location]
+
+
+def format_published_rows(rows: list[dict[str, str]], location: str) -> list[dict[str, str]]:
+    """Apply CFOpt's concise country/location/speed city labels."""
+    sequences: dict[str, int] = {}
+    for row in rows:
+        country = _row_country(row)
+        sequences[country] = sequences.get(country, 0) + 1
+        speed = float(row["下载速度(MB/s)"])
+        row["城市"] = f"{country} [{location}#{sequences[country]:02d} {speed:.1f}MB/s]"
+    return rows
 
 
 def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
@@ -576,6 +593,7 @@ def run_pipeline(args: argparse.Namespace, now: datetime) -> None:
         )
         if not filtered:
             raise RuntimeError("CFST produced no publishable rows")
+        format_published_rows(filtered, args.location)
         staged_csv = work / "CloudflareSpeedTest_CD.csv"
         write_csv(staged_csv, filtered)
 
@@ -618,7 +636,8 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture-dir")
     parser.add_argument("--state-file", default=".cflip/last-success.txt")
     parser.add_argument("--now", help="Timezone-aware ISO-8601 clock override.")
-    parser.add_argument("--output", default="CloudflareSpeedTest_CD.csv")
+    parser.add_argument("--location", choices=tuple(LOCATION_OUTPUTS), default=os.environ.get("CFIP_LOCATION", "CD").upper())
+    parser.add_argument("--output")
     parser.add_argument("--proxy-output", default="proxyip-best.txt")
     parser.add_argument("--countries", default=",".join(DEFAULT_COUNTRIES))
     parser.add_argument("--ports", default=",".join(map(str, DEFAULT_PORTS)))
@@ -653,6 +672,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_argument_parser()
     args = parser.parse_args(argv)
     try:
+        args.output = resolve_output_path(args)
         now = (
             datetime.fromisoformat(args.now)
             if args.now

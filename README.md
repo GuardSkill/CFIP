@@ -6,9 +6,10 @@ same ten-column UTF-8 CSV format used by CFOpt. It also publishes the existing
 
 Generated artifacts:
 
-- `CloudflareSpeedTest_CD.csv` — CFOpt-compatible measurements whose city label
-  explicitly identifies Chengdu testing, for example
-  `🇨🇳 CD [成都测速#01 tcp-precheck]`.
+- `CloudflareSpeedTest_CD.csv` — Windows / Chengdu measurements.
+- `CloudflareSpeedTest_BJ.csv` — Linux / Beijing measurements.
+  City values follow CFOpt's current form, for example `HK [CD#01 13.1MB/s]`
+  or `JP [BJ#02 10.0MB/s]`.
 - `proxyip-best.txt` — one `host:port#COUNTRY` entry per line.
 - `.cflip/last-success.txt` — the timezone-aware timestamp of the last complete
   publish, committed by the workflow to enforce the interval gate.

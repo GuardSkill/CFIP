@@ -347,7 +347,16 @@ def test_default_country_speed_thresholds_include_us_in_mb_per_second():
 
 
 def test_default_output_uses_chengdu_csv_name():
-    assert cflip._build_argument_parser().parse_args([]).output == "CloudflareSpeedTest_CD.csv"
+    args = cflip._build_argument_parser().parse_args([])
+    assert cflip.resolve_output_path(args) == "CloudflareSpeedTest_CD.csv"
+
+
+def test_location_profile_formats_bj_city_and_output_name():
+    args = cflip._build_argument_parser().parse_args(["--location", "BJ"])
+    rows = [{"_country": "JP", "下载速度(MB/s)": "10.04"}]
+
+    assert cflip.resolve_output_path(args) == "CloudflareSpeedTest_BJ.csv"
+    assert cflip.format_published_rows(rows, "BJ")[0]["城市"] == "JP [BJ#01 10.0MB/s]"
 
 
 def test_write_csv_emits_the_exact_cfopt_header_and_ten_columns(tmp_path):
@@ -454,11 +463,11 @@ def test_dry_run_uses_fixtures_and_writes_complete_artifacts(tmp_path):
         assert list(csv.reader(source)) == [
             csv_header(),
             [
-                "1.1.1.1", "443", "HKG", "🇨🇳 CD [成都测速#01 tcp-precheck]",
+                "1.1.1.1", "443", "HKG", "HK [CD#01 1.5MB/s]",
                 "true", "2", "2", "0", "20", "1.5",
             ],
             [
-                "2.2.2.2", "443", "NRT", "🇨🇳 CD [成都测速#01 tcp-precheck]",
+                "2.2.2.2", "443", "NRT", "JP [CD#01 1.0MB/s]",
                 "true", "2", "2", "0", "30", "1.0",
             ],
         ]

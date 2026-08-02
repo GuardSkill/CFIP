@@ -81,6 +81,7 @@ jobs:
         if: runner.os != 'Windows'
         env:
           CFST_PATH: .cflip/bin/cfst
+          CFIP_LOCATION: BJ
         run: python scripts/cflip.py
 
       - name: Run CFIP publisher (Windows)
@@ -88,6 +89,7 @@ jobs:
         shell: powershell
         env:
           CFST_PATH: .cflip/bin/cfst.exe
+          CFIP_LOCATION: CD
         run: |
           $ErrorActionPreference = 'Stop'
           & 'H:\CodeApp\Anaconda\python.exe' --version
@@ -99,7 +101,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f -- CloudflareSpeedTest_CD.csv proxyip-best.txt .cflip/last-success.txt
+          git add -f -- CloudflareSpeedTest_CD.csv CloudflareSpeedTest_BJ.csv proxyip-best.txt .cflip/last-success.txt
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
             Write-Host 'No generated changes to commit.'
