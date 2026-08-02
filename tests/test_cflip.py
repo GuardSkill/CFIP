@@ -398,16 +398,16 @@ def test_proxy_writer_emits_only_address_country_lines(tmp_path, local_listener)
     assert output.read_text(encoding="utf-8") == f"{local_listener.host}:{local_listener.port}#HK\n"
 
 
-def test_interval_gate_skips_before_150_minutes_and_runs_at_boundary(tmp_path):
-    """A successful publish must suppress every run younger than 150 minutes."""
+def test_interval_gate_skips_before_10_hours_and_runs_at_boundary(tmp_path):
+    """A successful publish must suppress every run younger than ten hours."""
     state = tmp_path / "last-success.txt"
     state.write_text("2026-08-01T00:00:00+00:00\n", encoding="utf-8")
 
     assert cflip.should_run(
-        state, datetime.fromisoformat("2026-08-01T02:29:00+00:00")
+        state, datetime.fromisoformat("2026-08-01T09:59:00+00:00")
     ) is False
     assert cflip.should_run(
-        state, datetime.fromisoformat("2026-08-01T02:30:00+00:00")
+        state, datetime.fromisoformat("2026-08-01T10:00:00+00:00")
     ) is True
 
 
@@ -424,12 +424,12 @@ def test_cli_gate_returns_before_pipeline_work(tmp_path, monkeypatch, capsys):
     result = cflip.main(
         [
             "--state-file", str(state),
-            "--now", "2026-08-01T02:29:00+00:00",
+            "--now", "2026-08-01T09:59:00+00:00",
         ]
     )
 
     assert result == 0
-    assert "150-minute gate" in capsys.readouterr().out
+    assert "10-hour gate" in capsys.readouterr().out
 
 
 def test_dry_run_uses_fixtures_and_writes_complete_artifacts(tmp_path):

@@ -49,7 +49,7 @@ DEFAULT_PORTS = (443, 2053, 2083, 2087, 2096, 8443)
 DEFAULT_IP_ZIP_URL = "https://zip.cm.edu.kg/ip.zip"
 DEFAULT_CFBESTIP_BASE_URL = "https://zoroaaa.github.io/cf-bestip"
 DEFAULT_PROXY_SOURCE = "https://zip.cm.edu.kg/all.txt"
-SUCCESS_INTERVAL = timedelta(minutes=150)
+SUCCESS_INTERVAL = timedelta(hours=10)
 LOCATION_OUTPUTS = {"CD": "CloudflareSpeedTest_CD.csv", "BJ": "CloudflareSpeedTest_BJ.csv"}
 
 
@@ -682,7 +682,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--now must include a timezone offset")
         state_file = Path(args.state_file)
         if not should_run(state_file, now):
-            print("Skipping: the last success is younger than the 150-minute gate.")
+            print("Skipping: the last success is younger than the 10-hour gate.")
             return 0
         run_pipeline(args, now)
         return 0

@@ -36,7 +36,7 @@ filtered result exits nonzero before replacing the existing published files.
 
 `.github/workflows/update.yml` is triggered every 30 minutes, but
 `scripts/cflip.py` exits successfully before doing network work when the
-committed success timestamp is younger than 150 minutes. The state advances
+committed success timestamp is younger than 10 hours. The state advances
 only after the CSV and proxy list have both been produced. The workflow grants
 only `contents: write`, uses the built-in `GITHUB_TOKEN`, and commits only the
 two generated artifacts and the success-state file.
