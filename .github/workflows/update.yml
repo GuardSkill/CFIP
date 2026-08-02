@@ -2,7 +2,8 @@ name: Update CFIP artifacts
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # GitHub Actions cron uses UTC: 20:00 UTC = 04:00 UTC+8 on the next day.
+    - cron: "0 20 * * *"
   workflow_dispatch:
     inputs:
       runner_label:
