@@ -35,7 +35,16 @@ CSV_HEADER = [
     "下载速度(MB/s)",
 ]
 
-DEFAULT_COUNTRIES = ("HK", "JP", "KR", "SG", "DE", "GB")
+DEFAULT_COUNTRIES = ("HK", "JP", "KR", "SG", "DE", "GB", "US")
+DEFAULT_COUNTRY_MIN_SPEEDS = {
+    "JP": 10.0,
+    "US": 5.0,
+    "KR": 3.0,
+    "HK": 2.0,
+    "DE": 5.0,
+    "GB": 3.0,
+    "SG": 5.0,
+}
 DEFAULT_PORTS = (443, 2053, 2083, 2087, 2096, 8443)
 DEFAULT_IP_ZIP_URL = "https://zip.cm.edu.kg/ip.zip"
 DEFAULT_CFBESTIP_BASE_URL = "https://zoroaaa.github.io/cf-bestip"
@@ -46,6 +55,28 @@ SUCCESS_INTERVAL = timedelta(minutes=150)
 def csv_header() -> list[str]:
     """Return a fresh copy of the CFOpt-compatible CSV header."""
     return CSV_HEADER.copy()
+
+
+def parse_country_speed_thresholds(value: str) -> dict[str, float]:
+    """Parse comma-delimited COUNTRY=minimum-MB/s values."""
+    thresholds: dict[str, float] = {}
+    for entry in value.split(","):
+        country, separator, raw_speed = entry.strip().partition("=")
+        if (
+            not separator
+            or len(country) != 2
+            or not country.isascii()
+            or not country.isalpha()
+        ):
+            raise ValueError(f"invalid country speed threshold: {entry!r}")
+        try:
+            speed = float(raw_speed)
+        except ValueError as error:
+            raise ValueError(f"invalid country speed threshold: {entry!r}") from error
+        if not math.isfinite(speed) or speed < 0:
+            raise ValueError(f"invalid country speed threshold: {entry!r}")
+        thresholds[country.upper()] = speed
+    return thresholds
 
 
 def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
@@ -176,8 +207,10 @@ def filter_rows(
     max_latency: int,
     min_speed: float,
     per_country: int,
+    country_min_speeds: dict[str, float] | None = None,
+    minimum_per_country: int = 2,
 ) -> list[dict[str, str]]:
-    """Keep valid CFST rows, deduplicated and capped by country."""
+    """Keep speed-qualified results, with two valid fallback rows per country."""
     if per_country <= 0:
         return []
 
@@ -193,8 +226,7 @@ def filter_rows(
 
         if not all(math.isfinite(value) for value in (received, loss, latency, speed)):
             continue
-        speed_mbps = round(speed * 8, 2)
-        if received < 1 or loss >= 1 or latency > max_latency or speed_mbps < min_speed:
+        if received < 1 or loss >= 1 or latency > max_latency or speed < min_speed:
             continue
 
         eligible.append((_row_country(row), latency, speed, index, row))
@@ -216,9 +248,23 @@ def filter_rows(
         grouped.setdefault(candidate[0], []).append(candidate)
 
     kept: list[dict[str, str]] = []
+    country_min_speeds = country_min_speeds or {}
     for country in sorted(grouped):
-        country_rows = sorted(grouped[country], key=lambda item: (item[1], -item[2], item[3]))
-        kept.extend(row for _, _, _, _, row in country_rows[:per_country])
+        country_rows = sorted(
+            grouped[country], key=lambda item: (-item[2], item[1], item[3])
+        )
+        country_floor = country_min_speeds.get(country, min_speed)
+        qualified = [item for item in country_rows if item[2] >= country_floor]
+        selected = qualified[:per_country]
+        if len(selected) < minimum_per_country:
+            selected_ids = {id(item) for item in selected}
+            for item in country_rows:
+                if id(item) in selected_ids:
+                    continue
+                selected.append(item)
+                if len(selected) >= min(minimum_per_country, per_country):
+                    break
+        kept.extend(row for _, _, _, _, row in selected[:per_country])
     return kept
 
 
@@ -523,7 +569,11 @@ def run_pipeline(args: argparse.Namespace, now: datetime) -> None:
             )
 
         filtered = filter_rows(
-            all_rows, args.max_latency, args.min_speed, args.per_country
+            all_rows,
+            args.max_latency,
+            args.min_speed,
+            args.per_country,
+            args.country_min_speeds,
         )
         if not filtered:
             raise RuntimeError("CFST produced no publishable rows")
@@ -582,6 +632,11 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tcp-limit", type=int, default=80)
     parser.add_argument("--max-latency", type=int, default=420)
     parser.add_argument("--min-speed", type=float, default=0.03)
+    parser.add_argument(
+        "--country-min-speeds",
+        type=parse_country_speed_thresholds,
+        default=DEFAULT_COUNTRY_MIN_SPEEDS.copy(),
+    )
     parser.add_argument("--per-country", type=int, default=20)
     parser.add_argument("--download-url", default="https://cf.xiu2.xyz/url")
     parser.add_argument("--proxy-source", default=DEFAULT_PROXY_SOURCE)

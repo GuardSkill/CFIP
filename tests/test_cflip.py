@@ -249,13 +249,13 @@ def test_filter_rows_rejects_bad_measurements_and_caps_each_country():
     ]
 
     assert [row["IP地址"] for row in cflip.filter_rows(rows, 420, 0.03, 1)] == [
-        "1.1.1.1",
+        "2.2.2.2",
         "3.3.3.3",
     ]
 
 
-def test_filter_rows_rounds_speed_to_two_decimals_before_the_threshold():
-    """CFOpt accepts a 0.0296 Mb/s measurement because it rounds to 0.03 Mb/s."""
+def test_filter_rows_uses_min_speed_as_mb_per_second():
+    """A 0.0037 MB/s row must not satisfy the 0.03 MB/s default floor."""
     rows = [{
         "IP地址": "1.1.1.1", "端口": "443", "数据中心": "HKG",
         "城市": "🇭🇰 HK [GitHub Actions#01 tcp-precheck]", "TLS": "true",
@@ -263,7 +263,7 @@ def test_filter_rows_rounds_speed_to_two_decimals_before_the_threshold():
         "下载速度(MB/s)": "0.0037",
     }]
 
-    assert cflip.filter_rows(rows, 420, 0.03, 1) == rows
+    assert cflip.filter_rows(rows, 420, 0.03, 1) == []
 
 
 def test_filter_rows_keeps_the_best_duplicate_endpoint_key():
@@ -299,6 +299,47 @@ def test_filter_rows_keeps_the_best_duplicate_endpoint_key():
         "HIGH-SPEED",
         "FAST",
     ]
+
+
+def test_country_speed_thresholds_keep_qualified_rows_and_two_fastest_fallbacks():
+    """Each country filters by its own MB/s floor, but keeps two valid rows."""
+    header = cflip.csv_header()
+
+    def row(country, address, speed, latency=20):
+        return dict(zip(header, [
+            address, "443", country, f"{country} test", "true", "2", "2", "0",
+            str(latency), str(speed),
+        ]))
+
+    rows = [
+        row("JP", "1.1.1.1", 11.0),
+        row("JP", "1.1.1.2", 9.0),
+        row("JP", "1.1.1.3", 8.0),
+        row("HK", "2.2.2.2", 1.5),
+        row("HK", "2.2.2.3", 1.2),
+        row("HK", "2.2.2.4", 0.8),
+    ]
+
+    results = cflip.filter_rows(
+        rows, 420, 0.03, 20, {"JP": 10.0, "HK": 2.0}, minimum_per_country=2,
+    )
+
+    assert [item[header[0]] for item in results] == [
+        "2.2.2.2", "2.2.2.3", "1.1.1.1", "1.1.1.2",
+    ]
+
+
+def test_country_speed_threshold_parser_rejects_non_numeric_value():
+    with pytest.raises(ValueError):
+        cflip.parse_country_speed_thresholds("JP=fast")
+
+
+def test_default_country_speed_thresholds_include_us_in_mb_per_second():
+    assert cflip.DEFAULT_COUNTRY_MIN_SPEEDS == {
+        "JP": 10.0, "US": 5.0, "KR": 3.0, "HK": 2.0,
+        "DE": 5.0, "GB": 3.0, "SG": 5.0,
+    }
+    assert "US" in cflip.DEFAULT_COUNTRIES
 
 
 def test_write_csv_emits_the_exact_cfopt_header_and_ten_columns(tmp_path):
