@@ -186,10 +186,8 @@ def normalize_cfst_rows(path: Path, country: str, port: int) -> list[dict[str, s
                     "IP地址": row["IP 地址"],
                     "端口": str(port),
                     "数据中心": row["地区码"],
-                    "城市": (
-                        f"{_country_flag(country_code)} {country_code} "
-                        f"[GitHub Actions#{sequence:02d} tcp-precheck]"
-                    ),
+                    "城市": f"🇨🇳 CD [成都测速#{sequence:02d} tcp-precheck]",
+                    "_country": country_code,
                     "TLS": "true",
                     "已发送": row["已发送"],
                     "已接收": row["已接收"],
@@ -291,6 +289,9 @@ def _country_flag(country: str) -> str:
 
 
 def _row_country(row: dict[str, str]) -> str:
+    source_country = row.get("_country", "").strip().upper()
+    if len(source_country) == 2 and source_country.isascii() and source_country.isalpha():
+        return source_country
     for token in row.get("城市", "").split():
         if len(token) == 2 and token.isascii() and token.isalpha():
             return token.upper()
@@ -422,10 +423,8 @@ def _normalize_mapped_cfst_rows(
                     "IP地址": address,
                     "端口": str(port),
                     "数据中心": row["地区码"],
-                    "城市": (
-                        f"{_country_flag(country)} {country} "
-                        f"[GitHub Actions#{sequences[country]:02d} tcp-precheck]"
-                    ),
+                    "城市": f"🇨🇳 CD [成都测速#{sequences[country]:02d} tcp-precheck]",
+                    "_country": country,
                     "TLS": "true",
                     "已发送": row["已发送"],
                     "已接收": row["已接收"],
@@ -577,7 +576,7 @@ def run_pipeline(args: argparse.Namespace, now: datetime) -> None:
         )
         if not filtered:
             raise RuntimeError("CFST produced no publishable rows")
-        staged_csv = work / "CloudflareSpeedTest_GH.csv"
+        staged_csv = work / "CloudflareSpeedTest_CD.csv"
         write_csv(staged_csv, filtered)
 
         staged_proxy = work / "proxyip-best.txt"
@@ -613,13 +612,13 @@ def run_pipeline(args: argparse.Namespace, now: datetime) -> None:
 
 def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Publish GitHub Actions CFST results in CFOpt-compatible formats."
+        description="Publish Chengdu CFST results in CFOpt-compatible formats."
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--fixture-dir")
     parser.add_argument("--state-file", default=".cflip/last-success.txt")
     parser.add_argument("--now", help="Timezone-aware ISO-8601 clock override.")
-    parser.add_argument("--output", default="CloudflareSpeedTest_GH.csv")
+    parser.add_argument("--output", default="CloudflareSpeedTest_CD.csv")
     parser.add_argument("--proxy-output", default="proxyip-best.txt")
     parser.add_argument("--countries", default=",".join(DEFAULT_COUNTRIES))
     parser.add_argument("--ports", default=",".join(map(str, DEFAULT_PORTS)))

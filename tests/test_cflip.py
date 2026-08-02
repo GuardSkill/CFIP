@@ -177,7 +177,7 @@ def test_precheck_limits_in_flight_submissions_for_large_input(monkeypatch):
 
 
 def test_normalize_cfst_rows_uses_cfopt_ten_column_mapping(tmp_path):
-    """CFST measurements must become a complete CFOpt row with a GH marker."""
+    """CFST measurements must become a complete CFOpt row with a Chengdu marker."""
     source = tmp_path / "cfst.csv"
     source.write_text(
         "IP 地址,已发送,已接收,丢包率,平均延迟,下载速度(MB/s),地区码\n"
@@ -190,7 +190,8 @@ def test_normalize_cfst_rows_uses_cfopt_ten_column_mapping(tmp_path):
             "IP地址": "1.1.1.1",
             "端口": "443",
             "数据中心": "HKG",
-            "城市": "🇭🇰 HK [GitHub Actions#01 tcp-precheck]",
+            "城市": "🇨🇳 CD [成都测速#01 tcp-precheck]",
+            "_country": "HK",
             "TLS": "true",
             "已发送": "2",
             "已接收": "2",
@@ -306,10 +307,13 @@ def test_country_speed_thresholds_keep_qualified_rows_and_two_fastest_fallbacks(
     header = cflip.csv_header()
 
     def row(country, address, speed, latency=20):
-        return dict(zip(header, [
+        result = dict(zip(header, [
             address, "443", country, f"{country} test", "true", "2", "2", "0",
             str(latency), str(speed),
         ]))
+        result[header[3]] = "🇨🇳 CD [成都测速#01 tcp-precheck]"
+        result["_country"] = country
+        return result
 
     rows = [
         row("JP", "1.1.1.1", 11.0),
@@ -340,6 +344,10 @@ def test_default_country_speed_thresholds_include_us_in_mb_per_second():
         "DE": 5.0, "GB": 3.0, "SG": 5.0,
     }
     assert "US" in cflip.DEFAULT_COUNTRIES
+
+
+def test_default_output_uses_chengdu_csv_name():
+    assert cflip._build_argument_parser().parse_args([]).output == "CloudflareSpeedTest_CD.csv"
 
 
 def test_write_csv_emits_the_exact_cfopt_header_and_ten_columns(tmp_path):
@@ -446,11 +454,11 @@ def test_dry_run_uses_fixtures_and_writes_complete_artifacts(tmp_path):
         assert list(csv.reader(source)) == [
             csv_header(),
             [
-                "1.1.1.1", "443", "HKG", "🇭🇰 HK [GitHub Actions#01 tcp-precheck]",
+                "1.1.1.1", "443", "HKG", "🇨🇳 CD [成都测速#01 tcp-precheck]",
                 "true", "2", "2", "0", "20", "1.5",
             ],
             [
-                "2.2.2.2", "443", "NRT", "🇯🇵 JP [GitHub Actions#01 tcp-precheck]",
+                "2.2.2.2", "443", "NRT", "🇨🇳 CD [成都测速#01 tcp-precheck]",
                 "true", "2", "2", "0", "30", "1.0",
             ],
         ]

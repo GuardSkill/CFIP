@@ -4,5 +4,5 @@
 __pycache__/
 .pytest_cache/
 .cflip/
-CloudflareSpeedTest_GH.csv
+CloudflareSpeedTest_CD.csv
 proxyip-best.txt

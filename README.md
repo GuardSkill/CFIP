@@ -1,14 +1,14 @@
 # CFIP
 
-CFIP publishes CloudflareSpeedTest results measured from GitHub Actions in the
+CFIP publishes CloudflareSpeedTest results measured by the Chengdu Windows runner in the
 same ten-column UTF-8 CSV format used by CFOpt. It also publishes the existing
 `proxyip-best.txt` format used by the bundled Subconverter configurations.
 
 Generated artifacts:
 
-- `CloudflareSpeedTest_GH.csv` — CFOpt-compatible measurements whose city label
-  explicitly identifies GitHub Actions, for example
-  `🇭🇰 HK [GitHub Actions#01 tcp-precheck]`.
+- `CloudflareSpeedTest_CD.csv` — CFOpt-compatible measurements whose city label
+  explicitly identifies Chengdu testing, for example
+  `🇨🇳 CD [成都测速#01 tcp-precheck]`.
 - `proxyip-best.txt` — one `host:port#COUNTRY` entry per line.
 - `.cflip/last-success.txt` — the timezone-aware timestamp of the last complete
   publish, committed by the workflow to enforce the interval gate.
@@ -20,9 +20,11 @@ The dependency-free Python runner downloads candidates from
 `https://zoroaaa.github.io/cf-bestip`. It deterministically caps each pool,
 keeps the fastest TCP-reachable candidates, and submits only those survivors to
 XIU2 CloudflareSpeedTest. Measurements must have at least one received probe,
-less than 1% loss, no more than 420 ms average latency, and at least 0.03 Mb/s
-after CFOpt-compatible rounding. Results are deduplicated and capped per
-country before publication.
+less than 1% loss, no more than 420 ms average latency, and at least 0.03 MB/s.
+Results are deduplicated and capped per country before publication. The default
+country speed floors are JP=10, US=5, KR=3, HK=2, DE=5, GB=3, and SG=5 MB/s.
+If fewer than two valid rows meet a country's floor, its fastest valid
+sub-threshold rows are retained until the country has two rows when possible.
 
 Downloads and TCP connections occur only during a real publisher run. Tests
 and dry-runs use committed fixtures; they do not access public services or run
@@ -40,8 +42,8 @@ two generated artifacts and the success-state file.
 
 ## Runner selection
 
-Scheduled runs and manual runs default to GitHub's `ubuntu-latest` runner.
-Manual dispatch exposes a constrained `runner_label` choice:
+Scheduled runs default to the Windows self-hosted runner. Manual dispatch
+exposes a constrained `runner_label` choice:
 
 - `ubuntu-latest` uses a GitHub-hosted runner.
 - `self-hosted` uses a trusted self-hosted runner carrying GitHub's standard
@@ -84,7 +86,7 @@ you do not want to update files in the working tree. `--now` accepts a
 timezone-aware ISO-8601 value for reproducible gate checks.
 
 Generated outputs and `.cflip/` runtime state are ignored for local work. The
-workflow force-adds only `CloudflareSpeedTest_GH.csv`, `proxyip-best.txt`, and
+workflow force-adds only `CloudflareSpeedTest_CD.csv`, `proxyip-best.txt`, and
 `.cflip/last-success.txt` when publishing, so downloaded binaries and temporary
 runtime files cannot be included in its artifact commit.
 
